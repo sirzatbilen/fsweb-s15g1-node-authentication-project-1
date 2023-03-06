@@ -1,3 +1,6 @@
+const UserModel = require("../users/users-model");
+const bcrypt = require("bcryptjs");
+
 /*
   Kullanıcının sunucuda kayıtlı bir oturumu yoksa
 
@@ -6,8 +9,19 @@
     "message": "Geçemezsiniz!"
   }
 */
-function sinirli() {
-
+function sinirli(req, res, next) {
+  try {
+    if (req.session && req.session.user_id) {
+      next();
+    } else {
+      next({
+        status: 401,
+        message: "Geçemezsiniz!",
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
 }
 
 /*
@@ -18,8 +32,21 @@ function sinirli() {
     "message": "Username kullaniliyor"
   }
 */
-function usernameBostami() {
-
+async function usernameBostami(req, res, next) {
+  try {
+    const userExist = await UserModel.goreBul({ username: req.body.username });
+    if (userExist && userExist.length) {
+      next({
+        status: 422,
+        message: "Username kullaniliyor",
+      });
+    } else {
+      req.body.password = bcrypt.hashSync(req.body.password);
+      next();
+    }
+  } catch (error) {
+    next(error);
+  }
 }
 
 /*
@@ -30,8 +57,35 @@ function usernameBostami() {
     "message": "Geçersiz kriter"
   }
 */
-function usernameVarmi() {
-
+async function usernameVarmi(req, res, next) {
+  try {
+    const userListFromUserName = await UserModel.goreBul({
+      username: req.body.username,
+    });
+    let userExist;
+    for (let i = 0; i < userListFromUserName.length; i++) {
+      const dbUser = userListFromUserName[i];
+      let isPasswordMatched = await bcrypt.compare(
+        req.body.password,
+        dbUser.password
+      );
+      if (isPasswordMatched && dbUser.username == req.body.username) {
+        userExist = dbUser;
+        break;
+      }
+    }
+    if (!userExist) {
+      next({
+        status: 401,
+        message: "Geçersiz kriter",
+      });
+    } else {
+      req.user = userExist;
+      next();
+    }
+  } catch (error) {
+    next(error);
+  }
 }
 
 /*
@@ -42,8 +96,21 @@ function usernameVarmi() {
     "message": "Şifre 3 karakterden fazla olmalı"
   }
 */
-function sifreGecerlimi() {
-
+function sifreGecerlimi(req, res, next) {
+  try {
+    if (!req.body.password || req.body.password.length < 3) {
+      next({
+        status: 422,
+        message: "Şifre 3 karakterden fazla olmalı",
+      });
+    } else {
+      next();
+    }
+  } catch (error) {
+    next(error);
+  }
 }
 
 // Diğer modüllerde kullanılabilmesi için fonksiyonları "exports" nesnesine eklemeyi unutmayın.
+
+module.exports = { sinirli, usernameBostami, usernameVarmi, sifreGecerlimi };
